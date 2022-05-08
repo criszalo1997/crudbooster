@@ -5,6 +5,7 @@ error_reporting(E_ALL ^ E_NOTICE);
 
 use CB;
 use crocodicstudio\crudbooster\export\DefaultExportXls;
+use crocodicstudio\crudbooster\import\DefaultImport;
 use CRUDBooster;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Cache;
@@ -358,7 +359,7 @@ class CBController extends Controller
                 }
             } else {
 
-                if(isset($field_array[1])) {                    
+                if(isset($field_array[1])) {
                     $result->addselect($table.'.'.$field.' as '.$table.'_'.$field);
                     $columns_table[$index]['type_data'] = CRUDBooster::getFieldType($table, $field);
                     $columns_table[$index]['field'] = $table.'_'.$field;
@@ -369,7 +370,7 @@ class CBController extends Controller
                     $columns_table[$index]['field'] = $field;
                     $columns_table[$index]['field_raw'] = $field;
                 }
-                
+
                 $columns_table[$index]['field_with'] = $table.'.'.$field;
             }
         }
@@ -852,11 +853,16 @@ class CBController extends Controller
 
         $request_all = Request::all();
         $array_input = [];
-        foreach ($this->data_inputan as $di) {
+        //dd($request_all);
+        foreach ($this->data_inputan as $key => $di) {
             $ai = [];
             $name = $di['name'];
+            //estaba verificando porque se salta la validacion de un valor nulo en textarea
 
-            if (! isset($request_all[$name])) {
+            if($request_all[$name] == null){
+                $request_all[$name] = "";
+            }
+            if (!isset($request_all[$name])) {
                 continue;
             }
 
@@ -888,6 +894,7 @@ class CBController extends Controller
                 $ai[] = 'mimes:'.$di['mimes'];
             }
             $name = $di['name'];
+
             if (! $name) {
                 continue;
             }
@@ -913,7 +920,6 @@ class CBController extends Controller
             }
 
             if (@$di['validation']) {
-
                 $exp = explode('|', $di['validation']);
                 if ($exp && count($exp)) {
                     foreach ($exp as &$validationItem) {
@@ -1029,7 +1035,11 @@ class CBController extends Controller
             if ($name) {
                 if ($inputdata != '') {
                     $this->arr[$name] = $inputdata;
-                } else {
+                }
+                else if ($inputdata == '') {
+                    $this->arr[$name] = "";
+                }
+                else {
                     if (CB::isColumnNULL($this->table, $name) && $ro['type'] != 'upload') {
                         continue;
                     } else {
@@ -1144,7 +1154,7 @@ class CBController extends Controller
         $this->hook_before_add($this->arr);
 
         $lastInsertId = $id = DB::table($this->table)->insertGetId($this->arr);
-        
+
         //fix bug if primary key is uuid
         if(isset($this->arr[$this->primary_key]) && $this->arr[$this->primary_key]!=$id) {
             $id = $this->arr[$this->primary_key];
@@ -1287,7 +1297,9 @@ class CBController extends Controller
         }
 
         $this->hook_before_edit($this->arr, $id);
+
         DB::table($this->table)->where($this->primary_key, $id)->update($this->arr);
+
 
         //Looping Data Input Again After Insert
         foreach ($this->data_inputan as $ro) {
@@ -1466,28 +1478,29 @@ class CBController extends Controller
         if (request('file') && ! request('import')) {
             $file = base64_decode(request('file'));
             $file = storage_path('app/'.$file);
-            $rows = Excel::load($file, function ($reader) {
-            })->get();
-            
-            $countRows = ($rows)?count($rows):0;
-            
-            Session::put('total_data_import', $countRows);
 
+            //$rows = Excel::load($file, function ($reader) {})->get();
+            $rows = Excel::toArray(new DefaultImport, $file);
+            //$rows =  (new DefaultImport)->toArray($file);
+            //dd($rows);
             $data_import_column = [];
-            foreach ($rows as $value) {
+            foreach ($rows[0] as $value) {
                 $a = [];
                 foreach ($value as $k => $v) {
                     $a[] = $k;
                 }
                 if ($a && count($a)) {
                     $data_import_column = $a;
+                    $countRows = ($value)?count($value):0;
                 }
                 break;
             }
-
+            
+            Session::put('total_data_import', $countRows);
             $table_columns = DB::getSchemaBuilder()->getColumnListing($this->table);
-
+            
             $data['table_columns'] = $table_columns;
+            //dd($data_import_column);
             $data['data_import_column'] = $data_import_column;
         }
 
@@ -1523,96 +1536,101 @@ class CBController extends Controller
         $select_column = Session::get('select_column');
         $select_column = array_filter($select_column);
         $table_columns = DB::getSchemaBuilder()->getColumnListing($this->table);
-
+        
         $file = base64_decode(request('file'));
         $file = storage_path('app/'.$file);
 
-        $rows = Excel::load($file, function ($reader) {
-        })->get();
+        //$rows = Excel::load($file, function ($reader) {})->get();
 
+        //$rows =  (new DefaultImport)->toArray($file);
+        $rows = Excel::toArray(new DefaultImport, $file);
+        
         $has_created_at = false;
         if (CRUDBooster::isColumnExists($this->table, 'created_at')) {
             $has_created_at = true;
         }
 
         $data_import_column = [];
-        foreach ($rows as $value) {
+        foreach ($rows[0] as $key => $value) {
             $a = [];
-            foreach ($select_column as $sk => $s) {
-                $colname = $table_columns[$sk];
+            if($select_column != $value){
+                foreach ($select_column as $sk => $s) {
+                   
+                    $colname = $table_columns[$sk];
+                     //dd($colname);
+                    if (CRUDBooster::isForeignKey($colname)) {
 
-                if (CRUDBooster::isForeignKey($colname)) {
-
-                    //Skip if value is empty
-                    if ($value->$s == '') {
-                        continue;
-                    }
-
-                    if (intval($value->$s)) {
-                        $a[$colname] = $value->$s;
-                    } else {
-                        $relation_table = CRUDBooster::getTableForeignKey($colname);
-                        $relation_moduls = DB::table('cms_moduls')->where('table_name', $relation_table)->first();
-
-                        $relation_class = __NAMESPACE__.'\\'.$relation_moduls->controller;
-                        if (! class_exists($relation_class)) {
-                            $relation_class = '\App\Http\Controllers\\'.$relation_moduls->controller;
-                        }
-                        $relation_class = new $relation_class;
-                        $relation_class->cbLoader();
-
-                        $title_field = $relation_class->title_field;
-
-                        $relation_insert_data = [];
-                        $relation_insert_data[$title_field] = $value->$s;
-
-                        if (CRUDBooster::isColumnExists($relation_table, 'created_at')) {
-                            $relation_insert_data['created_at'] = date('Y-m-d H:i:s');
+                        //Skip if value is empty
+                        if ($value[$s] == '') {
+                            continue;
                         }
 
-                        try {
-                            $relation_exists = DB::table($relation_table)->where($title_field, $value->$s)->first();
-                            if ($relation_exists) {
-                                $relation_primary_key = $relation_class->primary_key;
-                                $relation_id = $relation_exists->$relation_primary_key;
-                            } else {
-                                $relation_id = DB::table($relation_table)->insertGetId($relation_insert_data);
+                        if (intval($value[$s])) {
+                            $a[$colname] = $value[$s];
+                        } else {
+                            $relation_table = CRUDBooster::getTableForeignKey($colname);
+                            $relation_moduls = DB::table('cms_moduls')->where('table_name', $relation_table)->first();
+
+                            $relation_class = __NAMESPACE__.'\\'.$relation_moduls->controller;
+                            if (! class_exists($relation_class)) {
+                                $relation_class = '\App\Http\Controllers\\'.$relation_moduls->controller;
+                            }
+                            $relation_class = new $relation_class;
+                            $relation_class->cbLoader();
+
+                            $title_field = $relation_class->title_field;
+
+                            $relation_insert_data = [];
+                            $relation_insert_data[$title_field] = $value[$s];
+
+                            if (CRUDBooster::isColumnExists($relation_table, 'created_at')) {
+                                $relation_insert_data['created_at'] = date('Y-m-d H:i:s');
                             }
 
-                            $a[$colname] = $relation_id;
-                        } catch (\Exception $e) {
-                            exit($e);
-                        }
-                    } //END IS INT
+                            try {
+                                $relation_exists = DB::table($relation_table)->where($title_field, $value[$s])->first();
+                                if ($relation_exists) {
+                                    $relation_primary_key = $relation_class->primary_key;
+                                    $relation_id = $relation_exists->$relation_primary_key;
+                                } else {
+                                    $relation_id = DB::table($relation_table)->insertGetId($relation_insert_data);
+                                }
 
-                } else {
-                    $a[$colname] = $value->$s;
-                }
-            }
+                                $a[$colname] = $relation_id;
+                            } catch (\Exception $e) {
+                                exit($e);
+                            }
+                        } //END IS INT
 
-            $has_title_field = true;
-            foreach ($a as $k => $v) {
-                if ($k == $this->title_field && $v == '') {
-                    $has_title_field = false;
-                    break;
-                }
-            }
-
-            if ($has_title_field == false) {
-                continue;
-            }
-
-            try {
-
-                if ($has_created_at) {
-                    $a['created_at'] = date('Y-m-d H:i:s');
+                    } else {
+                        $a[$colname] = $value[$s];
+                    }
                 }
 
-                DB::table($this->table)->insert($a);
-                Cache::increment('success_'.$file_md5);
-            } catch (\Exception $e) {
-                $e = (string) $e;
-                Cache::put('error_'.$file_md5, $e, 500);
+                $has_title_field = true;
+                foreach ($a as $k => $v) {
+                    if ($k == $this->title_field && $v == '') {
+                        $has_title_field = false;
+                        break;
+                    }
+                }
+
+                if ($has_title_field == false) {
+                    continue;
+                }
+
+                try {
+
+                    if ($has_created_at) {
+                        $a['created_at'] = date('Y-m-d H:i:s');
+                    }
+
+                    DB::table($this->table)->insert($a);
+                    Cache::increment('success_'.$file_md5);
+                } catch (\Exception $e) {
+                    $e = (string) $e;
+                    Cache::put('error_'.$file_md5, $e, 500);
+                }
             }
         }
 

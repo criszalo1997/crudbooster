@@ -7,10 +7,10 @@ $type = @$form['type'] ?: 'text';
 if (in_array($type, $asset_already)) continue;
 
 ?>
-@if(file_exists(base_path('/vendor/crocodicstudio/crudbooster/src/views/default/type_components/'.$type.'/asset.blade.php')))
-    @include('crudbooster::default.type_components.'.$type.'.asset')
-@elseif(file_exists(resource_path('views/vendor/crudbooster/type_components/'.$type.'/asset.blade.php')))
-    @include('vendor.crudbooster.type_components.'.$type.'.asset')
+@if (file_exists(base_path('/vendor/crocodicstudio/crudbooster/src/views/default/type_components/' . $type . '/asset.blade.php')))
+    @include('crudbooster::default.type_components.' . $type . '.asset')
+@elseif(file_exists(resource_path('views/vendor/crudbooster/type_components/' . $type . '/asset.blade.php')))
+    @include('vendor.crudbooster.type_components.' . $type . '.asset')
 @endif
 <?php
 $asset_already[] = $type;
@@ -23,6 +23,7 @@ $asset_already[] = $type;
             font-weight: bold;
             width: 25%;
         }
+
     </style>
 @endpush
 
@@ -76,28 +77,28 @@ $asset_already[] = $type;
 
         ?>
 
-        @if(file_exists($file_location))
-            <?php $containTR = (substr(trim(file_get_contents($file_location)), 0, 4) == '<tr>') ? TRUE : FALSE;?>
-            @if($containTR)
-                @include('crudbooster::default.type_components.'.$type.'.component_detail')
+        @if (file_exists($file_location))
+            <?php $containTR = substr(trim(file_get_contents($file_location)), 0, 4) == '<tr>' ? true : false; ?>
+            @if ($containTR)
+                @include('crudbooster::default.type_components.' . $type . '.component_detail')
             @else
                 <tr>
-                    <td>{{$form['label']}}</td>
-                    <td>@include('crudbooster::default.type_components.'.$type.'.component_detail')</td>
+                    <td>{{ $form['label'] }}</td>
+                    <td>@include('crudbooster::default.type_components.' . $type . '.component_detail')</td>
                 </tr>
             @endif
         @elseif(file_exists($user_location))
-            <?php $containTR = (substr(trim(file_get_contents($user_location)), 0, 4) == '<tr>') ? TRUE : FALSE;?>
-            @if($containTR)
-                @include('vendor.crudbooster.type_components.'.$type.'.component_detail')
+            <?php $containTR = substr(trim(file_get_contents($user_location)), 0, 4) == '<tr>' ? true : false; ?>
+            @if ($containTR)
+                @include('vendor.crudbooster.type_components.' . $type . '.component_detail')
             @else
                 <tr>
-                    <td>{{$form['label']}}</td>
-                    <td>@include('vendor.crudbooster.type_components.'.$type.'.component_detail')</td>
+                    <td>{{ $form['label'] }}</td>
+                    <td>@include('vendor.crudbooster.type_components.' . $type . '.component_detail')</td>
                 </tr>
             @endif
         @else
-        <!-- <tr><td colspan='2'>NO COMPONENT {{$type}}</td></tr> -->
+            <!-- <tr><td colspan='2'>NO COMPONENT {{ $type }}</td></tr> -->
         @endif
 
 
